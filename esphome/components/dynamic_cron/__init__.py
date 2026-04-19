@@ -1,7 +1,9 @@
 from time import time
+import logging
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import switch, text, text_sensor
+from esphome.components.time import detect_tz
 from esphome.helpers import sanitize, snake_case
 from esphome.const import (
                       CONF_ID,
@@ -11,6 +13,8 @@ from esphome.const import (
                       )
 
 import yaml
+
+_LOGGER = logging.getLogger(__name__)
 
 # Imports do not load files or paths into the build directory.                          
 # You need to use AUTO_LOAD.
@@ -84,10 +88,10 @@ CONFIG_SCHEMA = cv.Schema({
     # Supposedly, I can add defaults after the class name, like this:
     #   switch.switch_schema(BypassSwitch, icon="mdi:chip")
     #
-    cv.Optional(CONF_BYPASS_SWITCH): switch.switch_schema(BypassSwitch),
-    cv.Optional(CONF_REMEMBER_NEXT_SWITCH): switch.switch_schema(RememberNextSwitch),
-    cv.Optional(CONF_CRON_NEXT_SENSOR): text_sensor.text_sensor_schema(CronNextSensor),
-    cv.Optional(CONF_CRONTAB_TEXT): text.text_schema(CrontabText),
+    cv.Optional(CONF_BYPASS_SWITCH): switch.switch_schema(BypassSwitch, icon="mdi:timer-off-outline"),
+    cv.Optional(CONF_REMEMBER_NEXT_SWITCH): switch.switch_schema(RememberNextSwitch, icon="mdi:memory"),
+    cv.Optional(CONF_CRON_NEXT_SENSOR): text_sensor.text_sensor_schema(CronNextSensor, icon="mdi:timer-outline"),
+    cv.Optional(CONF_CRONTAB_TEXT): text.text_schema(CrontabText, icon="mdi:calendar-clock-outline"),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -145,6 +149,17 @@ async def to_code(config):
     cg.add(var.setCrontabDefault(config[CONF_CRONTAB]))
     cg.add(var.setClearPrefs(config[CONF_CLEAR_PREFS]))
     cg.add(var.setTimeFormatDefault(config[CONF_TIME_FORMAT]))
+    
+    # Auto-detect POSIX TZ string so libc localtime/mktime (used by croncpp) are correct.
+    try:
+        tz_str = detect_tz()
+        _LOGGER.info("dynamic_cron: auto-detected timezone '%s'", tz_str)
+        cg.add(var.setTimezone(tz_str))
+    except cv.Invalid:
+        _LOGGER.warning(
+            "dynamic_cron: could not auto-detect timezone. "
+            "Scheduling may use wrong time offset."
+        )
     
     
     

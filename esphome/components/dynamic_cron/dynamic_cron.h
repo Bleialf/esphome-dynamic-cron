@@ -522,7 +522,8 @@ protected:
 
 
   // Returns current time as time_t.
-  std::time_t timeNow() {
+  // Virtual so ESPHome subclass can override.
+  virtual std::time_t timeNow() {
     return std::time(NULL);
   }
 

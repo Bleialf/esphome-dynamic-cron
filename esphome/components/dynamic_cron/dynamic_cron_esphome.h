@@ -19,6 +19,7 @@
 #include <string>
 #include <Preferences.h>
 #include <ctime>
+#include <cstdlib> // setenv, tzset
 
 #include "esphome/core/component.h"
 #include "esphome/core/application.h"
@@ -54,6 +55,10 @@ protected:
   
   std::time_t         cron_loop_previous_time;
   std::time_t         save_prefs_previous_time;
+
+  // POSIX TZ string to sync libc timezone (needed by croncpp).
+  std::string         timezone_str_;
+  bool                timezone_applied_{false};
     
 public:
   double              cron_loop_interval; // seconds
@@ -110,6 +115,15 @@ public:
     // Disable for production
     //printVersion();
     //LOGV("About to call timeIsValid() in Schedule.setup()");
+
+    // Sync C library timezone so localtime()/mktime() (used by croncpp) are correct.
+    // The POSIX TZ string is resolved at build time (auto-detected or from config).
+    if (!timezone_applied_ && !timezone_str_.empty()) {
+      setenv("TZ", timezone_str_.c_str(), 1);
+      tzset();
+      timezone_applied_ = true;
+      LOGI("Applied POSIX timezone: %s", timezone_str_.c_str());
+    }
     
     if (timeIsValid() && !setup_complete) {
       loadPrefs();
@@ -167,6 +181,13 @@ public:
 
   void setClearPrefs(bool val) {
     clear_prefs = val;
+  }
+
+  // Set POSIX TZ string (e.g. "CET-1CEST,M3.5.0,M10.5.0/3" for Vienna).
+  // This ensures the C library's localtime() matches ESPHome's timezone,
+  // which is required by the croncpp library for correct scheduling.
+  void setTimezone(const std::string &tz) {
+    timezone_str_ = tz;
   }
   
   
@@ -401,6 +422,12 @@ protected:
   //       them if necessary for debugging.
   //
   bool timeIsValid(std::time_t now = std::time(NULL)) {
+    // Don't consider time valid until the C library timezone has been set.
+    // This prevents cronnext from being computed against UTC.
+    if (!timezone_applied_) {
+      return false;
+    }
+
     //LOGV("Schedule::timeIsValid() calling ESPTime::from_epoch_local()");
     ESPTime esp_time = ESPTime::from_epoch_local(now);
 
@@ -410,13 +437,6 @@ protected:
     //LOGV("Schedule::timeIsValid() calling ScheduleCore::timeIsValid()");
     bool rslt_parent = ScheduleCore::timeIsValid(now);
     bool rslt_final = rslt_parent && rslt_esp;
-    
-    // What is this for?
-    //     if (rslt_final) {
-    //       LOGV("timeIsValid() using additional check with ESPTime: %d", rslt_final);
-    //     } else {
-    //       LOGV("timeIsValid() using additional check with ESPTime: %d", rslt_final);
-    //     }
     
     return rslt_final;
   }
@@ -449,7 +469,7 @@ public:
   
   void setup() override {
     //set_disabled_by_default(false);
-    set_icon("mdi:timer-off-outline");
+    // Icon now set via Python schema; set_icon() removed for ESPHome compat.
     // set_restore_mode(switch_::SWITCH_RESTORE_DISABLED);
     LOGV("get_object_id(): %s", get_object_id().c_str());
   }
@@ -474,7 +494,7 @@ public:
 
   void setup() override {
     //set_disabled_by_default(false);
-    set_icon("mdi:memory");
+    // Icon now set via Python schema; set_icon() removed for ESPHome compat.
     //set_restore_mode(switch_::SWITCH_RESTORE_DISABLED);
     LOGV("get_object_id(): %s", get_object_id().c_str());
   }
@@ -499,7 +519,7 @@ public:
 
   void setup() override {
     //set_disabled_by_default(false);
-    set_icon("mdi:timer-outline");
+    // Icon now set via Python schema; set_icon() removed for ESPHome compat.
     LOGV("get_object_id(): %s", get_object_id().c_str());
   }
   
@@ -518,7 +538,7 @@ public:
 
   void setup() override {
     //set_disabled_by_default(false);
-    set_icon("mdi:calendar-clock-outline");
+    // Icon now set via Python schema; set_icon() removed for ESPHome compat.
     traits.set_min_length(0);
     traits.set_max_length(255);
     traits.set_mode(text::TEXT_MODE_TEXT);
